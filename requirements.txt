@@ -1,4 +1,3 @@
-selenium
-webdriver-manager
+cloudscraper
+beautifulsoup4
 pandas
-undetected-chromedriver
