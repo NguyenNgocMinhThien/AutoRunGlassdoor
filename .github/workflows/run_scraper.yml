@@ -32,10 +32,8 @@ jobs:
     - name: Run Scraper
       run: python scraper.py
       env:
-        # Nếu bạn cần dùng biến môi trường (User/Pass) thì khai báo ở đây
         GLASSDOOR_USER: ${{ secrets.GLASSDOOR_USER }}
         GLASSDOOR_PWD: ${{ secrets.GLASSDOOR_PWD }}
-
     - name: Commit and Push results
       run: |
         git config --global user.name "github-actions[bot]"
