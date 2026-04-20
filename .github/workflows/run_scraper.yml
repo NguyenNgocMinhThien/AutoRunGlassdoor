@@ -35,3 +35,8 @@ jobs:
         git add glassdoor_jobs.csv || true
         git commit -m "Auto-update jobs data" || echo "No changes to commit"
         git push
+        
+    - name: Run Scraper
+      env:
+        SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+      run: python scraper.py    
