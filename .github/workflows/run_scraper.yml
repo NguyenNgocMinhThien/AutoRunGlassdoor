@@ -4,13 +4,13 @@ on:
   schedule:
     # 8:00 AM Việt Nam (UTC+7) = 1:00 AM UTC
     - cron: '0 1 * * *'
-  workflow_dispatch: # Cho phép bạn bấm nút chạy thủ công khi cần
+  workflow_dispatch: # Giữ nút này để bạn có thể bấm chạy thử bất cứ lúc nào
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Quan trọng: Cho phép bot ghi file vào Repo của bạn
 
     steps:
     - name: Checkout code
@@ -32,16 +32,16 @@ jobs:
       run: python scraper.py
 
     - name: Commit and Push results
-      if: success()
+      if: success() # Chỉ chạy nếu bước Run Scraper lấy được dữ liệu thành công
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
         
-        # Chỉ đẩy lên nếu file glassdoor_jobs.csv có dữ liệu (dung lượng > 0)
+        # Kiểm tra nếu file có dữ liệu mới thực hiện commit
         if [ -s glassdoor_jobs.csv ]; then
           git add glassdoor_jobs.csv
           git commit -m "Auto-update jobs: $(date +'%Y-%m-%d %H:%M')"
           git push origin main
         else
-          echo "Không có dữ liệu mới để cập nhật."
+          echo "Không có dữ liệu mới hoặc file trống, bỏ qua bước push."
         fi
