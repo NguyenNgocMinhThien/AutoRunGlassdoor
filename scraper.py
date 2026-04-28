@@ -99,16 +99,21 @@ def run_scraper():
                 
                 count = 0
                 for item in listings:
-                    try:
-                        title_el = item.find('a', {'data-test': 'job-title'})
-                        if not title_el: continue
-                        
-                        title = title_el.get_text(strip=True)
-                        link = title_el['href']
-                        if not link.startswith('http'): link = "https://www.glassdoor.com" + link
-                        
-                        company_el = item.find('div', {'data-test': 'employer-short-name'})
-                        company = company_el.get_text(strip=True).split('\n')[0].replace('★', '') if company_el else "N/A"
+    try:
+        # 1. Tìm Tiêu đề
+        title_el = item.find('a', {'data-test': 'job-title'})
+        title = title_el.get_text(strip=True) if title_el else "N/A"
+        
+        # 2. Tìm Tên công ty (Cập nhật selector mới nhất)
+        # Thường nằm trong thẻ div hoặc span ngay trên tiêu đề
+        company_el = item.find('span', {'class': 'EmployerProfile_employerName__D_zzf'}) 
+        if not company_el:
+            company_el = item.find('div', {'class': 'job-search-8vbe7v'}) # Class dự phòng
+            
+        company = company_el.get_text(strip=True).split('\n')[0] if company_el else "N/A"
+        
+        # Loại bỏ các ký tự rác như sao đánh giá (★)
+        company = company.replace('★', '').strip()
                         
                         salary_el = item.find('div', {'data-test': 'detailSalary'})
                         salary = salary_el.get_text(strip=True).replace('(Glassdoor Est.)', '').strip() if salary_el else ""
