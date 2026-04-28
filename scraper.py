@@ -19,10 +19,10 @@ def upload_to_catbox(file_path):
         with open(file_path, 'rb') as f:
             files = {'fileToUpload': f}
             data = {'reqtype': 'fileupload', 'time': '24h'}
-            response = requests.post(url, data=data, files=files)
+            response = requests.post(url, data=data, files=files, timeout=30)
         return response.text.strip()
     except Exception as e:
-        print(f"❌ Lỗi Catbox: {e}")
+        print(f"❌ Lỗi Catbox (Timeout/Down): {e}")
         return ""
 
 def send_to_teams(total_jobs, file_link):
@@ -43,7 +43,7 @@ def send_to_teams(total_jobs, file_link):
                         {"title": "Trạng thái:", "value": "Đã sẵn sàng ✅"}
                     ]}
                 ],
-                "actions": [{"type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL", "url": file_link}]
+                "actions": [{"type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL", "url": file_link}] if file_link else []
             }
         }]
     }
@@ -73,20 +73,24 @@ def run_scraper():
             payload = {
                 'api_key': SCRAPER_API_KEY,
                 'url': target_url,
-                'render': 'true',
-                'premium': 'true',
+                'render': 'false',   # Tắt render JS để tiết kiệm credit và tránh lỗi 500
+                'premium': 'true', 
                 'country_code': 'us'
             }
 
             try:
                 response = requests.get('http://api.scraperapi.com', params=payload, timeout=60)
                 
-                # Kiểm tra lỗi Credit (403) hoặc lỗi Server (500)
+                # 1. Kiểm tra Credit Âm (Lỗi 403)
                 if response.status_code == 403:
-                    print("❌ Lỗi 403: Hết credit ScraperAPI hoặc API Key sai.")
-                    return # Dừng toàn bộ chương trình nếu hết tiền
+                    print("❌ Lỗi 403: Hết credit ScraperAPI hoặc Key sai. Vui lòng kiểm tra số dư.")
+                    return # Dừng toàn bộ chương trình
+
+                # 2. Kiểm tra Lỗi Server (Lỗi 500)
                 if response.status_code != 200:
-                    print(f"⚠️ API lỗi {response.status_code}. Thử lại...")
+                    wait_time = attempts * 10
+                    print(f"⚠️ API báo lỗi {response.status_code}. Thử lại sau {wait_time}s...")
+                    time.sleep(wait_time)
                     continue
 
                 soup = BeautifulSoup(response.text, 'html.parser')
@@ -95,14 +99,15 @@ def run_scraper():
                 count = 0
                 for item in listings:
                     try:
-                        # 1. Tìm Tiêu đề và Link
                         title_el = item.find('a', {'data-test': 'job-title'})
                         if not title_el: continue
+                        
                         title = title_el.get_text(strip=True)
                         link = title_el['href']
-                        if not link.startswith('http'): link = "https://www.glassdoor.com" + link
+                        if not link.startswith('http'): 
+                            link = "https://www.glassdoor.com" + link
                         
-                        # 2. Tìm Tên công ty (Selector linh hoạt)
+                        # Selector linh hoạt cho Tên công ty
                         company = "N/A"
                         company_el = item.find('span', {'class': 'EmployerProfile_employerName__D_zzf'})
                         if not company_el:
@@ -110,7 +115,6 @@ def run_scraper():
                         if company_el:
                             company = company_el.get_text(strip=True).split('\n')[0].replace('★', '').strip()
                         
-                        # 3. Tìm Lương
                         salary_el = item.find('div', {'data-test': 'detailSalary'})
                         salary = salary_el.get_text(strip=True).replace('(Glassdoor Est.)', '').strip() if salary_el else ""
 
@@ -123,29 +127,35 @@ def run_scraper():
                             "Date": current_date
                         })
                         count += 1
-                    except Exception as e:
-                        print(f"⚠️ Lỗi bóc tách 1 job: {e}")
+                    except:
                         continue
                 
-                print(f"✅ Lấy được {count} jobs cho '{kw}'")
-                if count > 0: break 
+                if count > 0:
+                    print(f"✅ Lấy được {count} jobs cho '{kw}'")
+                    break # Thoát vòng lặp retry nếu thành công
+                else:
+                    print(f"⚠️ Trang trống cho '{kw}'. Thử lại...")
+                    time.sleep(5)
                 
             except Exception as e:
-                print(f"❗ Lỗi hệ thống: {e}")
-                time.sleep(5)
+                print(f"❗ Lỗi kết nối: {e}")
+                time.sleep(10)
 
     if all_jobs:
         file_name = f"Glassdoor_Jobs_{current_date}.xlsx"
         df = pd.DataFrame(all_jobs)
         df.to_excel(file_name, index=False, engine='openpyxl')
         
+        print(f"📊 Đã lưu {len(all_jobs)} jobs vào {file_name}")
+        
+        # Upload và gửi thông báo
         file_link = upload_to_catbox(file_name)
         send_telegram(f"✅ <b>[Glassdoor]</b> Tìm thấy {len(all_jobs)} jobs mới!", file_name)
         send_to_teams(len(all_jobs), file_link)
-        print(f"📊 Hoàn tất! Đã lưu vào {file_name}")
+        print("🏁 Hoàn tất!")
     else:
-        print("❌ Không tìm thấy job nào.")
-        send_telegram("❌ Glassdoor: Không tìm thấy job mới nào hôm nay.")
+        print("❌ Không tìm thấy dữ liệu nào.")
+        send_telegram("❌ Glassdoor: Không tìm thấy job mới nào hôm nay (Kiểm tra lại Credit/API).")
 
 if __name__ == "__main__":
     run_scraper()
