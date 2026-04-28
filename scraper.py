@@ -12,8 +12,6 @@ TEAMS_WEBHOOK = os.environ.get('TEAMS_WEBHOOK_URL')
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
-# --- HÀM HỖ TRỢ (GIỐNG LOGIC JS) ---
-
 def upload_to_catbox(file_path):
     """Tải file lên Litterbox (tồn tại 24h) để lấy link cho Teams"""
     try:
@@ -55,16 +53,10 @@ def send_telegram(message, file_path=None):
     """Gửi thông báo và file Excel qua Telegram"""
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
     base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-    
-    # Gửi tin nhắn text
     requests.post(f"{base_url}/sendMessage", data={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"})
-    
-    # Gửi file Excel
     if file_path and os.path.exists(file_path):
         with open(file_path, 'rb') as f:
             requests.post(f"{base_url}/sendDocument", data={"chat_id": TELEGRAM_CHAT_ID}, files={"document": f})
-
-# --- HÀM CHẠY CHÍNH ---
 
 def run_scraper():
     print("🚀 Khởi động Glassdoor Scraper...")
@@ -72,9 +64,7 @@ def run_scraper():
     current_date = datetime.now().strftime("%Y-%m-%d")
 
     for kw in KEYWORDS:
-        # URL tìm kiếm (Ví dụ vùng Vancouver, BC)
         target_url = f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={kw}&fromAge=3"
-        
         attempts = 0
         while attempts < 3:
             attempts += 1
@@ -90,6 +80,11 @@ def run_scraper():
 
             try:
                 response = requests.get('http://api.scraperapi.com', params=payload, timeout=60)
+                
+                # Kiểm tra lỗi Credit (403) hoặc lỗi Server (500)
+                if response.status_code == 403:
+                    print("❌ Lỗi 403: Hết credit ScraperAPI hoặc API Key sai.")
+                    return # Dừng toàn bộ chương trình nếu hết tiền
                 if response.status_code != 200:
                     print(f"⚠️ API lỗi {response.status_code}. Thử lại...")
                     continue
@@ -99,22 +94,23 @@ def run_scraper():
                 
                 count = 0
                 for item in listings:
-    try:
-        # 1. Tìm Tiêu đề
-        title_el = item.find('a', {'data-test': 'job-title'})
-        title = title_el.get_text(strip=True) if title_el else "N/A"
-        
-        # 2. Tìm Tên công ty (Cập nhật selector mới nhất)
-        # Thường nằm trong thẻ div hoặc span ngay trên tiêu đề
-        company_el = item.find('span', {'class': 'EmployerProfile_employerName__D_zzf'}) 
-        if not company_el:
-            company_el = item.find('div', {'class': 'job-search-8vbe7v'}) # Class dự phòng
-            
-        company = company_el.get_text(strip=True).split('\n')[0] if company_el else "N/A"
-        
-        # Loại bỏ các ký tự rác như sao đánh giá (★)
-        company = company.replace('★', '').strip()
+                    try:
+                        # 1. Tìm Tiêu đề và Link
+                        title_el = item.find('a', {'data-test': 'job-title'})
+                        if not title_el: continue
+                        title = title_el.get_text(strip=True)
+                        link = title_el['href']
+                        if not link.startswith('http'): link = "https://www.glassdoor.com" + link
                         
+                        # 2. Tìm Tên công ty (Selector linh hoạt)
+                        company = "N/A"
+                        company_el = item.find('span', {'class': 'EmployerProfile_employerName__D_zzf'})
+                        if not company_el:
+                            company_el = item.find('div', {'class': 'job-search-8vbe7v'})
+                        if company_el:
+                            company = company_el.get_text(strip=True).split('\n')[0].replace('★', '').strip()
+                        
+                        # 3. Tìm Lương
                         salary_el = item.find('div', {'data-test': 'detailSalary'})
                         salary = salary_el.get_text(strip=True).replace('(Glassdoor Est.)', '').strip() if salary_el else ""
 
@@ -127,7 +123,9 @@ def run_scraper():
                             "Date": current_date
                         })
                         count += 1
-                    except: continue
+                    except Exception as e:
+                        print(f"⚠️ Lỗi bóc tách 1 job: {e}")
+                        continue
                 
                 print(f"✅ Lấy được {count} jobs cho '{kw}'")
                 if count > 0: break 
@@ -137,18 +135,14 @@ def run_scraper():
                 time.sleep(5)
 
     if all_jobs:
-        # XUẤT FILE EXCEL (.xlsx)
         file_name = f"Glassdoor_Jobs_{current_date}.xlsx"
         df = pd.DataFrame(all_jobs)
-        # Sử dụng engine openpyxl để ghi file Excel
         df.to_excel(file_name, index=False, engine='openpyxl')
-        print(f"📊 Đã lưu {len(all_jobs)} jobs vào {file_name}")
-
-        # THÔNG BÁO
+        
         file_link = upload_to_catbox(file_name)
         send_telegram(f"✅ <b>[Glassdoor]</b> Tìm thấy {len(all_jobs)} jobs mới!", file_name)
         send_to_teams(len(all_jobs), file_link)
-        print("🏁 Hoàn tất!")
+        print(f"📊 Hoàn tất! Đã lưu vào {file_name}")
     else:
         print("❌ Không tìm thấy job nào.")
         send_telegram("❌ Glassdoor: Không tìm thấy job mới nào hôm nay.")
