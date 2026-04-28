@@ -1,58 +1,152 @@
-import requests
-from bs4 import BeautifulSoup
-import pandas as pd
 import os
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+import time
+from datetime import datetime
+
+# --- CẤU HÌNH BIẾN MÔI TRƯỜNG ---
+KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"]
+SCRAPER_API_KEY = os.environ.get('SCRAPER_API_KEY')
+TEAMS_WEBHOOK = os.environ.get('TEAMS_WEBHOOK_URL')
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+
+# --- HÀM HỖ TRỢ (GIỐNG LOGIC JS) ---
+
+def upload_to_catbox(file_path):
+    """Tải file lên Litterbox (tồn tại 24h) để lấy link cho Teams"""
+    try:
+        url = 'https://litterbox.catbox.moe/resources/internals/api.php'
+        with open(file_path, 'rb') as f:
+            files = {'fileToUpload': f}
+            data = {'reqtype': 'fileupload', 'time': '24h'}
+            response = requests.post(url, data=data, files=files)
+        return response.text.strip()
+    except Exception as e:
+        print(f"❌ Lỗi Catbox: {e}")
+        return ""
+
+def send_to_teams(total_jobs, file_link):
+    """Gửi Adaptive Card tới Microsoft Teams"""
+    if not TEAMS_WEBHOOK: return
+    card = {
+        "type": "message",
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "type": "AdaptiveCard",
+                "version": "1.4",
+                "body": [
+                    {"type": "TextBlock", "text": "🚀 CẬP NHẬT JOB GLASS DOOR", "weight": "Bolder", "size": "Medium", "color": "Accent"},
+                    {"type": "FactSet", "facts": [
+                        {"title": "Nguồn:", "value": "Glassdoor"},
+                        {"title": "Số lượng:", "value": f"{total_jobs} jobs"},
+                        {"title": "Trạng thái:", "value": "Đã sẵn sàng ✅"}
+                    ]}
+                ],
+                "actions": [{"type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL", "url": file_link}]
+            }
+        }]
+    }
+    requests.post(TEAMS_WEBHOOK, json=card)
+
+def send_telegram(message, file_path=None):
+    """Gửi thông báo và file Excel qua Telegram"""
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
+    base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+    
+    # Gửi tin nhắn text
+    requests.post(f"{base_url}/sendMessage", data={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"})
+    
+    # Gửi file Excel
+    if file_path and os.path.exists(file_path):
+        with open(file_path, 'rb') as f:
+            requests.post(f"{base_url}/sendDocument", data={"chat_id": TELEGRAM_CHAT_ID}, files={"document": f})
+
+# --- HÀM CHẠY CHÍNH ---
 
 def run_scraper():
-    api_key = os.environ.get('SCRAPER_API_KEY')
-    target_url = "https://www.glassdoor.com/Job/vietnam-python-developer-jobs-SRCH_IL.0,7_IN251_KO8,24.htm"
-    
-    # Sử dụng các tham số tối ưu để vượt qua lớp bảo vệ của Glassdoor
-    payload = {
-        'api_key': api_key, 
-        'url': target_url, 
-        'render': 'true',
-        'premium': 'true',
-        'country_code': 'us'
-    }
+    print("🚀 Khởi động Glassdoor Scraper...")
+    all_jobs = []
+    current_date = datetime.now().strftime("%Y-%m-%d")
 
-    print("🚀 Đang yêu cầu ScraperAPI xuyên phá Glassdoor...")
-    try:
-        response = requests.get('http://api.scraperapi.com', params=payload, timeout=60)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            jobs = []
+    for kw in KEYWORDS:
+        # URL tìm kiếm (Ví dụ vùng Vancouver, BC)
+        target_url = f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={kw}&fromAge=3"
+        
+        attempts = 0
+        while attempts < 3:
+            attempts += 1
+            print(f"🔍 Quét: {kw} (Lần {attempts})...")
             
-            # Bộ selector đa năng mới nhất
-            listings = soup.find_all(['li', 'div'], {'data-test': 'jobListing'})
-            
-            for item in listings:
-                try:
-                    # Tìm tiêu đề công việc (thử nhiều trường hợp)
-                    title_elem = item.find('a', {'data-test': 'job-title'}) or item.select_one('[class*="job-title"]')
-                    # Tìm tên công ty
-                    company_elem = item.find('div', {'data-test': 'employer-short-name'}) or item.select_one('[class*="employer-name"]')
-                    
-                    if title_elem:
-                        title = title_elem.get_text(strip=True)
-                        company = company_elem.get_text(strip=True) if company_elem else "N/A"
-                        # Loại bỏ rating (ví dụ 4.2*) nếu có dính vào tên công ty
-                        company = company.split('\n')[0].split('★')[0].strip()
+            payload = {
+                'api_key': SCRAPER_API_KEY,
+                'url': target_url,
+                'render': 'true',
+                'premium': 'true',
+                'country_code': 'us'
+            }
+
+            try:
+                response = requests.get('http://api.scraperapi.com', params=payload, timeout=60)
+                if response.status_code != 200:
+                    print(f"⚠️ API lỗi {response.status_code}. Thử lại...")
+                    continue
+
+                soup = BeautifulSoup(response.text, 'html.parser')
+                listings = soup.find_all(['li', 'div'], {'data-test': 'jobListing'})
+                
+                count = 0
+                for item in listings:
+                    try:
+                        title_el = item.find('a', {'data-test': 'job-title'})
+                        if not title_el: continue
                         
-                        jobs.append({"Title": title, "Company": company})
-                        print(f"✨ Tìm thấy: {title} @ {company}")
-                except: continue
-            
-            if jobs:
-                df = pd.DataFrame(jobs)
-                df.to_csv("glassdoor_jobs.csv", index=False, encoding="utf-8-sig")
-                print(f"✅ Hoàn tất! Đã lưu {len(jobs)} công việc.")
-            else:
-                print("❌ Vẫn không tìm thấy thẻ job. Có thể cần bật chế độ Render JS mạnh hơn.")
-        else:
-            print(f"⚠️ API lỗi mã: {response.status_code}")
-    except Exception as e:
-        print(f"❗ Lỗi hệ thống: {e}")
+                        title = title_el.get_text(strip=True)
+                        link = title_el['href']
+                        if not link.startswith('http'): link = "https://www.glassdoor.com" + link
+                        
+                        company_el = item.find('div', {'data-test': 'employer-short-name'})
+                        company = company_el.get_text(strip=True).split('\n')[0].replace('★', '') if company_el else "N/A"
+                        
+                        salary_el = item.find('div', {'data-test': 'detailSalary'})
+                        salary = salary_el.get_text(strip=True).replace('(Glassdoor Est.)', '').strip() if salary_el else ""
+
+                        all_jobs.append({
+                            "Title": title,
+                            "Company": company,
+                            "Salary": salary,
+                            "Link": link,
+                            "Keyword": kw,
+                            "Date": current_date
+                        })
+                        count += 1
+                    except: continue
+                
+                print(f"✅ Lấy được {count} jobs cho '{kw}'")
+                if count > 0: break 
+                
+            except Exception as e:
+                print(f"❗ Lỗi hệ thống: {e}")
+                time.sleep(5)
+
+    if all_jobs:
+        # XUẤT FILE EXCEL (.xlsx)
+        file_name = f"Glassdoor_Jobs_{current_date}.xlsx"
+        df = pd.DataFrame(all_jobs)
+        # Sử dụng engine openpyxl để ghi file Excel
+        df.to_excel(file_name, index=False, engine='openpyxl')
+        print(f"📊 Đã lưu {len(all_jobs)} jobs vào {file_name}")
+
+        # THÔNG BÁO
+        file_link = upload_to_catbox(file_name)
+        send_telegram(f"✅ <b>[Glassdoor]</b> Tìm thấy {len(all_jobs)} jobs mới!", file_name)
+        send_to_teams(len(all_jobs), file_link)
+        print("🏁 Hoàn tất!")
+    else:
+        print("❌ Không tìm thấy job nào.")
+        send_telegram("❌ Glassdoor: Không tìm thấy job mới nào hôm nay.")
 
 if __name__ == "__main__":
     run_scraper()

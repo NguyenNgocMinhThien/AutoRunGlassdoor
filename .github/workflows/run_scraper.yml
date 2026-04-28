@@ -32,16 +32,10 @@ jobs:
       run: python scraper.py
 
     - name: Commit and Push results
-      if: success() # Chỉ chạy nếu bước Run Scraper lấy được dữ liệu thành công
+      if: success()
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
-        
-        # Kiểm tra nếu file có dữ liệu mới thực hiện commit
-        if [ -s glassdoor_jobs.csv ]; then
-          git add glassdoor_jobs.csv
-          git commit -m "Auto-update jobs: $(date +'%Y-%m-%d %H:%M')"
-          git push origin main
-        else
-          echo "Không có dữ liệu mới hoặc file trống, bỏ qua bước push."
-        fi
+        git add *.xlsx
+        git commit -m "Auto-update Excel: $(date +'%Y-%m-%d')" || echo "No changes to commit"
+        git push origin main
