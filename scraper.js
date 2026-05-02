@@ -39,69 +39,62 @@ async function runScraper() {
     let allJobs = [];
     const currentDate = new Date().toISOString().split('T')[0];
 
-    for (const kw of KEYWORDS) {
-        // MÃ VÙNG CHUẨN VANCOUVER, BC: 2278757
-        const targetUrl = `https://www.glassdoor.ca/Job/vancouver-bc-jobs-SRCH_IL.0,12_IC2278757.htm?sc.keyword=${encodeURIComponent(kw)}&fromAge=3`;
-        
-        let attempts = 0;
-        while (attempts < 3) {
-            try {
-                attempts++;
-                console.log(`🔍 Quét: ${kw} (Lần ${attempts})...`);
+    // --- TRONG HÀM runScraper() ---
+for (const kw of KEYWORDS) {
+    // 1. URL CHUẨN VANCOUVER, BC, CANADA (IC2278757)
+    const targetUrl = `https://www.glassdoor.ca/Job/vancouver-bc-jobs-SRCH_IL.0,12_IC2278757.htm?sc.keyword=${encodeURIComponent(kw)}&fromAge=3`;
+    
+    let attempts = 0;
+    while (attempts < 3) {
+        try {
+            attempts++;
+            console.log(`🔍 Quét: ${kw} tại Vancouver, Canada (Lần ${attempts})...`);
 
-                const response = await axios.get('http://api.scraperapi.com', {
-                    params: {
-                        api_key: process.env.SCRAPER_API_KEY,
-                        url: targetUrl,
-                        render: 'true', // BẮT BUỘC để lấy được thẻ Location
-                        premium: 'true',
-                        country_code: 'ca' 
-                    },
-                    timeout: 90000
-                });
+            const response = await axios.get('http://api.scraperapi.com', {
+                params: {
+                    api_key: process.env.SCRAPER_API_KEY,
+                    url: targetUrl,
+                    premium: 'true', // Dùng IP chất lượng cao để tránh lỗi 500
+                    country_code: 'ca' 
+                },
+                timeout: 60000
+            });
 
-                const $ = cheerio.load(response.data);
+            const $ = cheerio.load(response.data);
+            
+            $('li[data-test="jobListing"]').each((i, el) => {
+                const titleEl = $(el).find('a[id^="job-title"]');
+                const title = titleEl.text().trim();
                 
-                $('li[data-test="jobListing"]').each((i, el) => {
-                    // 1. Lấy Title & Link
-                    const titleEl = $(el).find('a[id^="job-title"]');
-                    const title = titleEl.text().trim();
-                    let link = titleEl.attr('href') || "";
-                    if (link && !link.startsWith('http')) link = "https://www.glassdoor.ca" + link;
-                    // Force đổi .com thành .ca nếu có
-                    link = link.replace('glassdoor.com', 'glassdoor.ca');
+                // LẤY LOCATION CHÍNH XÁC (Nơi bạn khoanh tròn)
+                // Chúng ta lấy div chứa địa điểm ngay dưới tên công ty
+                const location = $(el).find('[data-test="location"], .job-search-8vbe7v').first().text().trim() || "Vancouver, BC";
 
-                    // 2. Lấy Location (Nơi bạn khoanh tròn)
-                    // Glassdoor dùng div class JobCard_location__... hoặc data-test="location"
-                    const location = $(el).find('[class*="location"], [data-test="location"]').first().text().trim() || "Vancouver, BC";
+                let company = $(el).find('[class*="EmployerProfile_employerName"]').first().text().trim();
+                company = company.split(/[\d.]+\s*★/)[0].trim();
 
-                    // 3. Lấy Company
-                    let company = $(el).find('[class*="EmployerProfile_employerName"]').first().text().trim();
-                    company = company.split(/[\d.]+\s*★/)[0].trim();
+                let link = titleEl.attr('href') || "";
+                if (link && !link.startsWith('http')) link = "https://www.glassdoor.ca" + link;
 
-                    // 4. Lấy Salary
-                    const salary = $(el).find('[data-test="detailSalary"]').text().trim() || "N/A";
+                if (title && title !== "") {
+                    allJobs.push({
+                        Title: title,
+                        Company: company,
+                        Location: location, // Sẽ không còn bị N/A
+                        Link: link,
+                        Keyword: kw,
+                        Date: currentDate
+                    });
+                }
+            });
 
-                    if (title) {
-                        allJobs.push({
-                            Title: title,
-                            Company: company,
-                            Salary: salary,
-                            Location: location,
-                            Link: link,
-                            Keyword: kw,
-                            Date: currentDate
-                        });
-                    }
-                });
-
-                if (allJobs.length > 0) break;
-            } catch (err) {
-                console.log(`⚠️ Lỗi: ${err.message}`);
-                await new Promise(r => setTimeout(r, 5000));
-            }
+            if (allJobs.length > 0) break; // Nếu có dữ liệu thì chuyển sang Keyword tiếp theo
+        } catch (err) {
+            console.log(`⚠️ Lỗi kết nối (Status ${err.response?.status || 'Unknown'}): Đang thử lại...`);
+            await new Promise(r => setTimeout(r, 3000));
         }
     }
+}
 
     if (allJobs.length > 0) {
         const fileName = `Vancouver_Jobs_${currentDate}.xlsx`;
