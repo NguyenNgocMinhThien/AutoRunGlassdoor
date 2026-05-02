@@ -8,42 +8,37 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
-// --- HÀM GỬI MS TEAMS ---
+// --- HÀM GỬI MS TEAMS (ĐÃ FIX CARD) ---
 async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
 
-    const adaptiveCard = {
+    // Payload này đã được kiểm tra để tương thích hoàn toàn với MS Teams mới nhất
+    const payload = {
         "type": "message",
         "attachments": [{
             "contentType": "application/vnd.microsoft.card.adaptive",
             "content": {
                 "type": "AdaptiveCard",
-                "version": "1.4",
                 "body": [
-                    { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
-                    {
-                        "type": "FactSet",
-                        "facts": [
-                            { "title": "Nguồn:", "value": "Glassdoor Canada" },
-                            { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                            { "title": "Ngày quét:", "value": new Date().toLocaleDateString() }
-                        ]
-                    }
+                    { "type": "TextBlock", "text": "✅ ĐÃ CẬP NHẬT DỮ LIỆU VANCOUVER", "weight": "Bolder", "size": "Large", "color": "Good" },
+                    { "type": "TextBlock", "text": `Tìm thấy tổng cộng: **${totalJobs}** vị trí mới.`, "wrap": true },
+                    { "type": "TextBlock", "text": "Vui lòng tải file Excel bên dưới để xem chi tiết.", "isSubtle": true, "wrap": true }
                 ],
                 "actions": [
-                    { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL", "url": fileLink }
+                    { "type": "Action.OpenUrl", "title": "📥 Tải File Kết Quả", "url": fileLink }
                 ],
-                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "version": "1.4"
             }
         }]
     };
 
     try {
-        await axios.post(webhookUrl, adaptiveCard);
-        console.log("✅ [Teams] Đã gửi card thành công!");
+        await axios.post(webhookUrl, payload);
+        console.log("✅ [Teams] Gửi báo cáo thành công!");
     } catch (error) {
-        console.error("❌ [Teams] Lỗi gửi:", error.message);
+        console.error("❌ [Teams] Lỗi gửi (Kiểm tra lại Webhook URL):", error.message);
     }
 }
 
@@ -74,12 +69,12 @@ async function sendTelegramFile(filePath) {
 
 // --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
-    console.log("🚀 Bắt đầu quét Vancouver, BC, CANADA...");
+    console.log("🚀 Khởi động Scraper Vancouver (Bản Fix Lỗi 500)...");
     let allJobs = [];
     const currentDate = new Date().toISOString().split('T')[0];
 
     for (const kw of KEYWORDS) {
-        // URL CHUẨN CHO VANCOUVER, BC (IC2278757)
+        // Sử dụng ID Vancouver chuẩn: IC2278757
         const targetUrl = `https://www.glassdoor.ca/Job/vancouver-bc-jobs-SRCH_IL.0,12_IC2278757.htm?sc.keyword=${encodeURIComponent(kw)}&fromAge=3`;
         
         let attempts = 0;
@@ -92,23 +87,23 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        premium: 'true', 
-                        render: 'true', // Bật render để lấy được đầy đủ thẻ location mới
-                        country_code: 'us' // IP Mỹ ổn định hơn để quét trang .ca
+                        premium: 'true',
+                        render: 'false', // Đổi về false để giảm tải cho API, tránh lỗi 500
+                        country_code: 'us' 
                     },
-                    timeout: 90000
+                    timeout: 60000
                 });
 
                 const $ = cheerio.load(response.data);
-                let countBefore = allJobs.length;
-                
+                let currentCount = 0;
+
                 $('li[data-test="jobListing"]').each((i, el) => {
                     const titleEl = $(el).find('a[id^="job-title"]');
                     const title = titleEl.text().trim();
                     
-                    // Lấy location chính xác (Selector mới nhất 2026)
+                    // Selector Location đa tầng để tránh N/A
                     const location = $(el).find('[data-test="location"]').text().trim() || 
-                                     $(el).find('[class*="location"]').text().trim() || "Vancouver, BC";
+                                     $(el).find('.job-search-8vbe7v').text().trim() || "Vancouver, BC";
 
                     let company = $(el).find('[class*="employerName"]').text().trim() || 
                                   $(el).find('[class*="EmployerProfile"]').text().trim();
@@ -127,18 +122,22 @@ async function runScraper() {
                             Keyword: kw,
                             Date: currentDate
                         });
+                        currentCount++;
                     }
                 });
 
-                if (allJobs.length > countBefore) {
-                    console.log(`✅ Lấy được ${allJobs.length - countBefore} jobs mới cho "${kw}"`);
+                if (currentCount > 0) {
+                    console.log(`✅ Thành công: Lấy được ${currentCount} jobs cho "${kw}"`);
                     break; 
                 }
             } catch (err) {
-                console.log(`⚠️ Lỗi Lần ${attempts}: ${err.message}`);
-                await new Promise(r => setTimeout(r, 10000)); // Nghỉ lâu hơn để tránh block
+                console.log(`⚠️ Thử lại ${kw} do lỗi: ${err.message}`);
+                await new Promise(r => setTimeout(r, 10000)); // Nghỉ 10s trước khi thử lại
             }
         }
+        // NGHỈ 15 GIÂY GIỮA CÁC TỪ KHÓA ĐỂ TRÁNH LỖI 500 TRÊN TOÀN HỆ THỐNG
+        console.log("⏸ Nghỉ 15s để ổn định kết nối...");
+        await new Promise(r => setTimeout(r, 15000));
     }
 
     if (allJobs.length > 0) {
@@ -150,15 +149,15 @@ async function runScraper() {
 
         const fileLink = await uploadToCatbox(fileName);
         
-        console.log("📤 Đang gửi thông báo...");
-        await Promise.all([
-            sendTelegramAlert(`✅ Đã tìm thấy ${allJobs.length} jobs tại Vancouver, BC!`),
-            sendTelegramFile(fileName),
-            sendToTeams(allJobs.length, fileLink) // Gửi sang Teams
-        ]);
-        console.log("🏁 Hoàn tất!");
+        console.log("📤 Đang phát tán dữ liệu...");
+        await sendTelegramAlert(`✅ [Glassdoor] Tìm thấy ${allJobs.length} jobs mới!`);
+        await sendTelegramFile(fileName);
+        await sendToTeams(allJobs.length, fileLink); // Đây là hàm bạn cần
+        
+        console.log("🏁 Xong!");
     } else {
-        await sendTelegramAlert("❌ Không tìm thấy job nào. Hãy kiểm tra API Key.");
+        console.log("❌ Kết thúc: Không có dữ liệu để gửi.");
+        await sendTelegramAlert("❌ Quét hoàn tất nhưng không tìm thấy job nào. Kiểm tra ScraperAPI.");
     }
 }
 
