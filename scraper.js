@@ -39,13 +39,13 @@ async function sendToTeams(totalJobs, fileLink) {
         "type": "AdaptiveCard",
         "version": "1.4",
         "body": [
-            { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI GLASSDOOR", "weight": "Bolder", "size": "Medium", "color": "Accent" },
+            { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI GREATER VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
             {
                 "type": "FactSet",
                 "facts": [
-                    { "title": "Nguồn:", "value": "Glassdoor" },
-                    { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                    { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
+                    { "title": "Nguồn:", "value": "Glassdoor Canada" },
+                    { "title": "Khu vực:", "value": "Vancouver & Vùng lân cận" },
+                    { "title": "Số lượng:", "value": `${totalJobs} jobs` }
                 ]
             }
         ],
@@ -91,20 +91,23 @@ async function sendTelegramFile(filePath) {
 
 // --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
-    console.log("🚀 Khởi động Glassdoor Scraper...");
+    console.log("🚀 Khởi động Glassdoor Vancouver Scraper...");
     let allJobs = [];
     const currentDate = new Date().toISOString().split('T')[0];
 
+    // Danh sách các từ khóa địa điểm hợp lệ để lọc thủ công
+    const validLocations = ["vancouver", "burnaby", "north vancouver", "west vancouver", "richmond", "surrey", "coquitlam", "bc", "british columbia"];
+
     for (const kw of KEYWORDS) {
-        // Glassdoor URL structure
-        const targetUrl = `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${encodeURIComponent(kw)}&fromAge=3`;
+        // CẬP NHẬT: Sử dụng .ca và locId cho Greater Vancouver (1147401)
+        const targetUrl = `https://www.glassdoor.ca/Job/jobs.htm?sc.keyword=${encodeURIComponent(kw)}&locId=1147401&locT=C&fromAge=3`;
         let attempts = 0;
         const maxAttempts = 3;
 
         while (attempts < maxAttempts) {
             try {
                 attempts++;
-                console.log(`🔍 Quét Glassdoor: ${kw} (Lần ${attempts})...`);
+                console.log(`🔍 Quét: ${kw} tại Vancouver (Lần ${attempts})...`);
 
                 const response = await axios.get('http://api.scraperapi.com', {
                     params: {
@@ -112,7 +115,7 @@ async function runScraper() {
                         url: targetUrl,
                         render: 'false',
                         premium: 'true',
-                        country_code: 'us' // Hoặc 'ca' tùy thị trường bạn muốn
+                        country_code: 'ca' // Ưu tiên IP Canada
                     },
                     timeout: 60000
                 });
@@ -120,26 +123,26 @@ async function runScraper() {
                 const $ = cheerio.load(response.data);
                 let count = 0;
 
-                // Selector đặc thù cho danh sách job của Glassdoor
                 $('li[data-test="jobListing"], div[data-test="jobListing"]').each((i, el) => {
                     const titleEl = $(el).find('a[data-test="job-title"]');
                     const title = titleEl.text().trim();
                     if (!title) return;
 
-                    // Lấy tên công ty và xóa phần rating (ví dụ: "Google 4.5 ★" -> "Google")
+                    // Lấy địa điểm và kiểm tra
+                    const location = $(el).find('[data-test="location"]').text().trim() || "N/A";
+                    
+                    // LỌC THỦ CÔNG: Nếu location không chứa các từ khóa vùng Vancouver thì bỏ qua
+                    const isVancouverArea = validLocations.some(loc => location.toLowerCase().includes(loc));
+                    if (!isVancouverArea && location !== "N/A") return;
+
                     let companyRaw = $(el).find('[class*="EmployerProfile_employerName"], [class*="employerName"], .job-search-8vbe7v').first().text().trim();
                     const company = companyRaw.split(/[\d.]+\s*★/)[0].trim() || "N/A";
 
-                    // Lấy lương
                     const salary = $(el).find('[data-test="detailSalary"]').text().trim() || "";
 
-                    // Lấy địa điểm
-                    const location = $(el).find('[data-test="location"]').text().trim() || "N/A";
-
-                    // Lấy Link
                     let link = titleEl.attr('href') || "";
                     if (link && !link.startsWith('http')) {
-                        link = "https://www.glassdoor.com" + link;
+                        link = "https://www.glassdoor.ca" + link;
                     }
 
                     allJobs.push({
@@ -155,18 +158,18 @@ async function runScraper() {
                     count++;
                 });
 
-                console.log(`✅ Lấy được ${count} jobs từ Glassdoor cho từ khóa "${kw}"`);
+                console.log(`✅ Lấy được ${count} jobs tại Vancouver cho "${kw}"`);
                 if (count > 0) break; 
 
             } catch (err) {
-                console.log(`⚠️ Lỗi ${kw} (lần ${attempts}): ${err.message}`);
+                console.log(`⚠️ Lỗi ${kw}: ${err.message}`);
                 if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
             }
         }
     }
 
     if (allJobs.length > 0) {
-        const fileName = `Glassdoor_Jobs_${currentDate}.xlsx`;
+        const fileName = `Vancouver_Jobs_${currentDate}.xlsx`;
 
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
@@ -178,15 +181,15 @@ async function runScraper() {
         const fileLink = await uploadToCatbox(fileName);
 
         await Promise.all([
-            sendTelegramAlert(`✅ [Glassdoor] Tìm thấy ${allJobs.length} jobs mới!`),
+            sendTelegramAlert(`✅ [Glassdoor] Tìm thấy ${allJobs.length} jobs mới tại Vancouver!`),
             sendTelegramFile(fileName),
             sendToTeams(allJobs.length, fileLink)
         ]);
 
         console.log("🏁 Hoàn tất!");
     } else {
-        console.log("❌ Không tìm thấy job nào trên Glassdoor.");
-        await sendTelegramAlert("❌ [Glassdoor] Không tìm thấy job mới nào.");
+        console.log("❌ Không tìm thấy job nào ở Vancouver.");
+        await sendTelegramAlert("❌ [Glassdoor] Không tìm thấy job mới nào tại Vancouver.");
     }
 }
 
