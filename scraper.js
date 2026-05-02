@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url);
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
-// --- HÀM UPLOAD LITTERBOX (Giữ nguyên) ---
+// --- HÀM UPLOAD LITTERBOX ---
 async function uploadToCatbox(filePath) {
     try {
         const form = new FormData();
@@ -30,7 +30,7 @@ async function uploadToCatbox(filePath) {
     }
 }
 
-// --- HÀM GỬI TEAMS (Giữ nguyên) ---
+// --- HÀM GỬI TEAMS ---
 async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
@@ -63,7 +63,7 @@ async function sendToTeams(totalJobs, fileLink) {
     }
 }
 
-// --- HÀM GỬI TELEGRAM (Giữ nguyên) ---
+// --- HÀM GỬI TELEGRAM ---
 async function sendTelegramAlert(message) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -89,18 +89,18 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
-// --- HÀM CHẠY CHÍNH (ĐÃ SỬA URL VÀ FILTER) ---
+// --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
     console.log("🚀 Khởi động Glassdoor Scraper (Khu vực Vancouver)...");
     let allJobs = [];
     const currentDate = new Date().toISOString().split('T')[0];
 
-    // Danh sách địa điểm hợp lệ
-    const validVancouverAreas = ["vancouver", "burnaby", "north vancouver", "west vancouver", "bc", "british columbia"];
+    // Danh sách địa điểm hợp lệ để lọc
+    const validVancouverAreas = ["vancouver", "burnaby", "richmond", "surrey", "coquitlam", "bc", "british columbia"];
 
     for (const kw of KEYWORDS) {
-        // CẬP NHẬT: Dùng .ca và locId=1147401 (Mã vùng Vancouver trên Glassdoor)
-        const targetUrl = `https://www.glassdoor.ca/Job/jobs.htm?sc.keyword=${encodeURIComponent(kw)}&locId=1147401&locT=C&fromAge=3`;
+        // Sử dụng cấu trúc URL tìm kiếm chuẩn của Glassdoor CA cho Vancouver
+        const targetUrl = `https://www.glassdoor.ca/Job/vancouver-bc-jobs-SRCH_IL.0,12_IC1147401.htm?sc.keyword=${encodeURIComponent(kw)}&fromAge=3`;
         let attempts = 0;
         const maxAttempts = 3;
 
@@ -113,37 +113,41 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        render: 'false',
+                        render: 'true', // Bật render để vượt tường lửa
                         premium: 'true',
-                        country_code: 'ca' // Đổi sang Canada để lấy kết quả chuẩn
+                        country_code: 'ca' 
                     },
-                    timeout: 60000
+                    timeout: 90000 
                 });
 
                 const $ = cheerio.load(response.data);
+                
+                // Kiểm tra xem có bị chặn bởi trang Access Denied không
+                if ($('title').text().includes("Access Denied") || response.data.includes("cloudflare")) {
+                    throw new Error("Bị Glassdoor chặn (Security Block)");
+                }
+
                 let count = 0;
-
+                // Selector linh hoạt cho cả li và div Listing
                 $('li[data-test="jobListing"], div[data-test="jobListing"]').each((i, el) => {
-                    // Lấy địa điểm để lọc
-                    const location = $(el).find('[data-test="location"]').text().trim() || "N/A";
+                    const location = $(el).find('[data-test="location"], [class*="location"]').first().text().trim() || "N/A";
                     
-                    // --- LOGIC FILTER MỚI ---
+                    // Logic Filter: Kiểm tra xem job có thuộc vùng Vancouver/BC không
                     const isVancouverJob = validVancouverAreas.some(area => location.toLowerCase().includes(area));
-                    // Nếu không nằm trong vùng Vancouver và không phải Canada (BC) thì bỏ qua
-                    if (!isVancouverJob) return; 
+                    if (!isVancouverJob && location !== "N/A") return; 
 
-                    const titleEl = $(el).find('a[data-test="job-title"]');
+                    const titleEl = $(el).find('a[data-test="job-title"], [class*="job-title"]');
                     const title = titleEl.text().trim();
                     if (!title) return;
 
-                    let companyRaw = $(el).find('[class*="EmployerProfile_employerName"], [class*="employerName"], .job-search-8vbe7v').first().text().trim();
+                    let companyRaw = $(el).find('[data-test="employer-shortname"], [class*="employerName"]').first().text().trim();
                     const company = companyRaw.split(/[\d.]+\s*★/)[0].trim() || "N/A";
 
-                    const salary = $(el).find('[data-test="detailSalary"]').text().trim() || "";
+                    const salary = $(el).find('[data-test="detailSalary"], [class*="salary"]').first().text().trim() || "";
 
                     let link = titleEl.attr('href') || "";
                     if (link && !link.startsWith('http')) {
-                        link = "https://www.glassdoor.ca" + link; // Chuyển link về .ca
+                        link = "https://www.glassdoor.ca" + link;
                     }
 
                     allJobs.push({
@@ -159,7 +163,7 @@ async function runScraper() {
                     count++;
                 });
 
-                console.log(`✅ Lấy được ${count} jobs Vancouver cho từ khóa "${kw}"`);
+                console.log(`✅ Lấy được ${count} jobs hợp lệ cho từ khóa "${kw}"`);
                 if (count > 0) break; 
 
             } catch (err) {
@@ -169,16 +173,15 @@ async function runScraper() {
         }
     }
 
+    // --- XUẤT FILE & GỬI BÁO CÁO ---
     if (allJobs.length > 0) {
         const fileName = `Vancouver_Jobs_${currentDate}.xlsx`;
-
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
         console.log(`📊 Đã lưu ${allJobs.length} jobs vào ${fileName}`);
-
         const fileLink = await uploadToCatbox(fileName);
 
         await Promise.all([
@@ -189,8 +192,8 @@ async function runScraper() {
 
         console.log("🏁 Hoàn tất!");
     } else {
-        console.log("❌ Không tìm thấy job nào ở Vancouver.");
-        await sendTelegramAlert("❌ [Glassdoor] Không tìm thấy job mới nào tại Vancouver.");
+        console.log("❌ Không tìm thấy job nào hợp lệ.");
+        await sendTelegramAlert("❌ [Glassdoor] Không tìm thấy job mới nào tại Vancouver hôm nay.");
     }
 }
 
