@@ -8,7 +8,46 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
-// --- HÀM UPLOAD & THÔNG BÁO ---
+// --- HÀM GỬI MS TEAMS ---
+async function sendToTeams(totalJobs, fileLink) {
+    const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
+    if (!webhookUrl) return;
+
+    const adaptiveCard = {
+        "type": "message",
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "type": "AdaptiveCard",
+                "version": "1.4",
+                "body": [
+                    { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
+                    {
+                        "type": "FactSet",
+                        "facts": [
+                            { "title": "Nguồn:", "value": "Glassdoor Canada" },
+                            { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                            { "title": "Ngày quét:", "value": new Date().toLocaleDateString() }
+                        ]
+                    }
+                ],
+                "actions": [
+                    { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL", "url": fileLink }
+                ],
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+            }
+        }]
+    };
+
+    try {
+        await axios.post(webhookUrl, adaptiveCard);
+        console.log("✅ [Teams] Đã gửi card thành công!");
+    } catch (error) {
+        console.error("❌ [Teams] Lỗi gửi:", error.message);
+    }
+}
+
+// --- HÀM UPLOAD CATBOX ---
 async function uploadToCatbox(filePath) {
     try {
         const form = new FormData();
@@ -39,71 +78,68 @@ async function runScraper() {
     let allJobs = [];
     const currentDate = new Date().toISOString().split('T')[0];
 
-    // --- TRONG HÀM runScraper() ---
-    // --- TRONG HÀM runScraper() ---
-for (const kw of KEYWORDS) {
-    // SỬ DỤNG URL CỐ ĐỊNH CHO VANCOUVER, BC ĐỂ TRÁNH REDIRECT SANG MỸ
-    const targetUrl = `https://www.glassdoor.ca/Job/vancouver-bc-jobs-SRCH_IL.0,12_IC2278757.htm?sc.keyword=${encodeURIComponent(kw)}`;
-    
-    let attempts = 0;
-    while (attempts < 3) {
-        try {
-            attempts++;
-            console.log(`🔍 Quét: ${kw} (Lần ${attempts})...`);
+    for (const kw of KEYWORDS) {
+        // URL CHUẨN CHO VANCOUVER, BC (IC2278757)
+        const targetUrl = `https://www.glassdoor.ca/Job/vancouver-bc-jobs-SRCH_IL.0,12_IC2278757.htm?sc.keyword=${encodeURIComponent(kw)}&fromAge=3`;
+        
+        let attempts = 0;
+        while (attempts < 3) {
+            try {
+                attempts++;
+                console.log(`🔍 Quét: ${kw} (Lần ${attempts})...`);
 
-            const response = await axios.get('http://api.scraperapi.com', {
-                params: {
-                    api_key: process.env.SCRAPER_API_KEY,
-                    url: targetUrl,
-                    // THAY ĐỔI TẠI ĐÂY:
-                    premium: 'true', 
-                    render: 'false', // Tắt render để giảm lỗi 500 và tăng tốc độ
-                    country_code: 'us' // Thử dùng IP Mỹ (ổn định hơn) để quét trang .ca vẫn ra Vancouver
-                },
-                timeout: 60000
-            });
+                const response = await axios.get('http://api.scraperapi.com', {
+                    params: {
+                        api_key: process.env.SCRAPER_API_KEY,
+                        url: targetUrl,
+                        premium: 'true', 
+                        render: 'true', // Bật render để lấy được đầy đủ thẻ location mới
+                        country_code: 'us' // IP Mỹ ổn định hơn để quét trang .ca
+                    },
+                    timeout: 90000
+                });
 
-            const $ = cheerio.load(response.data);
-            
-            // Selector cập nhật để lấy đúng dữ liệu từ cấu trúc mới
-            $('li[data-test="jobListing"]').each((i, el) => {
-                const titleEl = $(el).find('a[id^="job-title"]');
-                const title = titleEl.text().trim();
+                const $ = cheerio.load(response.data);
+                let countBefore = allJobs.length;
                 
-                // Lấy location chính xác (phần text bạn khoanh tròn trong ảnh)
-                const location = $(el).find('[data-test="location"]').first().text().trim() || 
-                                 $(el).find('.job-search-8vbe7v').first().text().trim() || "Vancouver, BC";
+                $('li[data-test="jobListing"]').each((i, el) => {
+                    const titleEl = $(el).find('a[id^="job-title"]');
+                    const title = titleEl.text().trim();
+                    
+                    // Lấy location chính xác (Selector mới nhất 2026)
+                    const location = $(el).find('[data-test="location"]').text().trim() || 
+                                     $(el).find('[class*="location"]').text().trim() || "Vancouver, BC";
 
-                let company = $(el).find('[class*="EmployerProfile_employerName"]').first().text().trim();
-                company = company.split(/[\d.]+\s*★/)[0].trim();
+                    let company = $(el).find('[class*="employerName"]').text().trim() || 
+                                  $(el).find('[class*="EmployerProfile"]').text().trim();
+                    company = company.split(/[\d.]+\s*★/)[0].trim();
 
-                let link = titleEl.attr('href') || "";
-                if (link && !link.startsWith('http')) link = "https://www.glassdoor.ca" + link;
+                    let link = titleEl.attr('href') || "";
+                    if (link && !link.startsWith('http')) link = "https://www.glassdoor.ca" + link;
 
-                if (title) {
-                    allJobs.push({
-                        Title: title,
-                        Company: company,
-                        Salary: $(el).find('[data-test="detailSalary"]').text().trim() || "N/A",
-                        Location: location,
-                        Link: link.replace('glassdoor.com', 'glassdoor.ca'),
-                        Keyword: kw,
-                        Date: currentDate
-                    });
+                    if (title) {
+                        allJobs.push({
+                            Title: title,
+                            Company: company,
+                            Salary: $(el).find('[data-test="detailSalary"]').text().trim() || "N/A",
+                            Location: location,
+                            Link: link.replace('glassdoor.com', 'glassdoor.ca'),
+                            Keyword: kw,
+                            Date: currentDate
+                        });
+                    }
+                });
+
+                if (allJobs.length > countBefore) {
+                    console.log(`✅ Lấy được ${allJobs.length - countBefore} jobs mới cho "${kw}"`);
+                    break; 
                 }
-            });
-
-            if (allJobs.length > 0) {
-                console.log(`✅ Lấy được ${allJobs.length} jobs cho từ khóa "${kw}"`);
-                break; 
+            } catch (err) {
+                console.log(`⚠️ Lỗi Lần ${attempts}: ${err.message}`);
+                await new Promise(r => setTimeout(r, 10000)); // Nghỉ lâu hơn để tránh block
             }
-        } catch (err) {
-            console.log(`⚠️ Lỗi kết nối (Lần ${attempts}): ${err.message}`);
-            if (attempts === 3) await sendTelegramAlert(`❌ Lỗi 500 quá nhiều cho từ khóa: ${kw}`);
-            await new Promise(r => setTimeout(r, 5000));
         }
     }
-}
 
     if (allJobs.length > 0) {
         const fileName = `Vancouver_Jobs_${currentDate}.xlsx`;
@@ -113,12 +149,16 @@ for (const kw of KEYWORDS) {
         XLSX.writeFile(workbook, fileName);
 
         const fileLink = await uploadToCatbox(fileName);
+        
+        console.log("📤 Đang gửi thông báo...");
         await Promise.all([
             sendTelegramAlert(`✅ Đã tìm thấy ${allJobs.length} jobs tại Vancouver, BC!`),
-            sendTelegramFile(fileName)
+            sendTelegramFile(fileName),
+            sendToTeams(allJobs.length, fileLink) // Gửi sang Teams
         ]);
+        console.log("🏁 Hoàn tất!");
     } else {
-        await sendTelegramAlert("❌ Không tìm thấy job nào. Hãy kiểm tra ScraperAPI Credit.");
+        await sendTelegramAlert("❌ Không tìm thấy job nào. Hãy kiểm tra API Key.");
     }
 }
 
