@@ -113,9 +113,13 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        render: 'false',
                         premium: 'true',
-                        country_code: 'ca' // Ưu tiên IP Canada
+                        country_code: 'ca',
+                        // Thêm tham số này để ScraperAPI tự động xử lý lỗi tốt hơn
+                        keep_headers: 'true' 
+                    },
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                     },
                     timeout: 60000
                 });
