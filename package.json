@@ -1,0 +1,27 @@
+{
+  "name": "autorunglassdoor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NguyenNgocMinhThien/AutoRunGlassdoor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/NguyenNgocMinhThien/AutoRunGlassdoor/issues"
+  },
+  "homepage": "https://github.com/NguyenNgocMinhThien/AutoRunGlassdoor#readme",
+  "dependencies": {
+    "axios": "^1.15.2",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.4.2",
+    "xlsx": "^0.18.5"
+  }
+}
