@@ -22,7 +22,7 @@ jobs:
         run: npm install
 
       - name: Run Script
-        run: node index.js
+        run: node scraper.js
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
