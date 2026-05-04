@@ -11,12 +11,16 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 // --- HÀM GỬI MS TEAMS (ĐÃ FIX HIỂN THỊ) ---
 async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
-    if (!webhookUrl) return;
+    if (!webhookUrl) {
+        console.log("❌ Không tìm thấy TEAMS_WEBHOOK_URL");
+        return;
+    }
 
-    const cardPayload = {
+    const payload = {
         "type": "message",
         "attachments": [{
             "contentType": "application/vnd.microsoft.card.adaptive",
+            "contentUrl": null,
             "content": {
                 "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
                 "type": "AdaptiveCard",
@@ -24,26 +28,24 @@ async function sendToTeams(totalJobs, fileLink) {
                 "body": [
                     {
                         "type": "TextBlock",
-                        "text": "🚀 **CẬP NHẬT JOB VANCOUVER**",
+                        "text": "🚀 **CẬP NHẬT JOB MỚI TẠI VANCOUVER**",
                         "weight": "Bolder",
                         "size": "Large",
                         "wrap": true
                     },
                     {
                         "type": "TextBlock",
-                        "text": `Tổng số Job: **${totalJobs}**\nKhu vực: Vancouver, BC\nNgày: ${new Date().toLocaleDateString('vi-VN')}`,
-                        "wrap": true
-                    },
+                        "text": `**Tổng số Job:** ${totalJobs}\n\nKhu vực: Vancouver, BC\nNgày: ${new Date().toLocaleDateString('vi-VN')}`,
+                        "wrap": true,
+                        "spacing": "Medium"
+                    }
+                ],
+                "actions": [
                     {
-                        "type": "ActionSet",
-                        "actions": [
-                            {
-                                "type": "Action.OpenUrl",
-                                "title": "📥 TẢI FILE EXCEL",
-                                "url": fileLink || "#",
-                                "style": "positive"
-                            }
-                        ]
+                        "type": "Action.OpenUrl",
+                        "title": "📥 TẢI FILE EXCEL",
+                        "url": fileLink || "https://litterbox.catbox.moe",
+                        "style": "positive"
                     }
                 ]
             }
@@ -51,10 +53,11 @@ async function sendToTeams(totalJobs, fileLink) {
     };
 
     try {
-        const res = await axios.post(webhookUrl, cardPayload, {
+        const res = await axios.post(webhookUrl, payload, {
             headers: { "Content-Type": "application/json" }
         });
-        console.log(`✅ [Teams] Status: ${res.status}`);
+        console.log(`✅ [Teams] Status: ${res.status} - Đã gửi payload`);
+        if (fileLink) console.log("🔗 File link:", fileLink);
     } catch (error) {
         console.error("❌ [Teams] Lỗi:", error.response?.data || error.message);
     }
