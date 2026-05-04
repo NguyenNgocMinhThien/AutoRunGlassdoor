@@ -16,48 +16,19 @@ async function sendToTeams(totalJobs, fileLink) {
         return;
     }
 
-    const payload = {
-        "type": "message",
-        "attachments": [{
-            "contentType": "application/vnd.microsoft.card.adaptive",
-            "contentUrl": null,
-            "content": {
-                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                "type": "AdaptiveCard",
-                "version": "1.4",
-                "body": [
-                    {
-                        "type": "TextBlock",
-                        "text": "🚀 **CẬP NHẬT JOB MỚI TẠI VANCOUVER**",
-                        "weight": "Bolder",
-                        "size": "Large",
-                        "wrap": true
-                    },
-                    {
-                        "type": "TextBlock",
-                        "text": `**Tổng số Job:** ${totalJobs}\n\nKhu vực: Vancouver, BC\nNgày: ${new Date().toLocaleDateString('vi-VN')}`,
-                        "wrap": true,
-                        "spacing": "Medium"
-                    }
-                ],
-                "actions": [
-                    {
-                        "type": "Action.OpenUrl",
-                        "title": "📥 TẢI FILE EXCEL",
-                        "url": fileLink || "https://litterbox.catbox.moe",
-                        "style": "positive"
-                    }
-                ]
-            }
-        }]
+    const simpleMessage = {
+        "text": `🚀 **CẬP NHẬT JOB VANCOUVER**\n\n` +
+                `Tổng số Job: **${totalJobs}**\n` +
+                `Khu vực: Vancouver, BC\n` +
+                `Ngày: ${new Date().toLocaleDateString('vi-VN')}\n\n` +
+                `📥 Tải file Excel: ${fileLink || 'Không có link'}`
     };
 
     try {
-        const res = await axios.post(webhookUrl, payload, {
+        const res = await axios.post(webhookUrl, simpleMessage, {
             headers: { "Content-Type": "application/json" }
         });
-        console.log(`✅ [Teams] Status: ${res.status} - Đã gửi payload`);
-        if (fileLink) console.log("🔗 File link:", fileLink);
+        console.log(`✅ [Teams] Simple message - Status: ${res.status}`);
     } catch (error) {
         console.error("❌ [Teams] Lỗi:", error.response?.data || error.message);
     }
