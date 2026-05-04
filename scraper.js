@@ -16,28 +16,46 @@ async function sendToTeams(totalJobs, fileLink) {
     const adaptiveCard = {
         "type": "AdaptiveCard",
         "version": "1.4",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
         "body": [
-            { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
+            {
+                "type": "TextBlock",
+                "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
+                "weight": "Bolder",
+                "size": "Medium",
+                "color": "Accent",
+                "wrap": true
+            },
             {
                 "type": "FactSet",
                 "facts": [
-                    { "title": "Nguồn:", "value": "Indeed Canada" },
+                    { "title": "Nguồn:", "value": "Glassdoor Canada" },
                     { "title": "Số lượng:", "value": `${totalJobs} jobs` },
                     { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
                 ]
+            },
+            {
+                "type": "TextBlock",
+                "text": "Nhấn nút bên dưới để tải file Excel chi tiết",
+                "wrap": true,
+                "isSubtle": true,
+                "spacing": "Medium"
             }
         ],
         "actions": [
-            { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }
-        ],
-        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+            {
+                "type": "Action.OpenUrl",
+                "title": "📥 TẢI FILE EXCEL VỀ MÁY",
+                "url": fileLink || "#"
+            }
+        ]
     };
 
     try {
         await axios.post(webhookUrl, adaptiveCard);
         console.log("✅ [Teams] Đã gửi Card thành công!");
     } catch (error) {
-        console.error("❌ [Teams] Lỗi gửi:", error.message);
+        console.error("❌ [Teams] Lỗi gửi:", error.response?.data || error.message);
     }
 }
 
