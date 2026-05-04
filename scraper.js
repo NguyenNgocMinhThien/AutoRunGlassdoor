@@ -11,24 +11,23 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 // --- HÀM GỬI MS TEAMS (ĐÃ FIX HIỂN THỊ) ---
 async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
+    
     if (!webhookUrl) {
-        console.log("❌ Không tìm thấy TEAMS_WEBHOOK_URL");
+        console.error("❌ TEAMS_WEBHOOK_URL chưa được set trong GitHub Secrets");
         return;
     }
 
-    const simpleMessage = {
-        "text": `🚀 **CẬP NHẬT JOB VANCOUVER**\n\n` +
-                `Tổng số Job: **${totalJobs}**\n` +
-                `Khu vực: Vancouver, BC\n` +
-                `Ngày: ${new Date().toLocaleDateString('vi-VN')}\n\n` +
-                `📥 Tải file Excel: ${fileLink || 'Không có link'}`
+    console.log("🔗 Webhook URL length:", webhookUrl.length); // Để check có giá trị không
+
+    const testPayload = {
+        "text": `🧪 TEST WEBHOOK - ${new Date().toLocaleString('vi-VN')}\nTổng job: ${totalJobs}\nLink: ${fileLink || 'Không có'}`
     };
 
     try {
-        const res = await axios.post(webhookUrl, simpleMessage, {
+        const res = await axios.post(webhookUrl, testPayload, {
             headers: { "Content-Type": "application/json" }
         });
-        console.log(`✅ [Teams] Simple message - Status: ${res.status}`);
+        console.log(`✅ [Teams Test] Status: ${res.status}`);
     } catch (error) {
         console.error("❌ [Teams] Lỗi:", error.response?.data || error.message);
     }
