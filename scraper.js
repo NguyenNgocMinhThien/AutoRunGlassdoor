@@ -13,34 +13,36 @@ async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
 
-    // Cấu trúc Adaptive Card chuẩn 1.4 - Đảm bảo không bị trống tin nhắn
-    const cardContent = {
+    const cardPayload = {
         "type": "message",
         "attachments": [{
             "contentType": "application/vnd.microsoft.card.adaptive",
+            "contentUrl": null,
             "content": {
                 "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
                 "type": "AdaptiveCard",
                 "version": "1.4",
+                "msteams": { "width": "Full" },
                 "body": [
                     {
                         "type": "TextBlock",
-                        "text": "📊 BÁO CÁO VIỆC LÀM VANCOUVER",
+                        "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
                         "weight": "Bolder",
                         "size": "Large",
-                        "color": "Accent"
+                        "color": "Accent",
+                        "wrap": true
                     },
                     {
                         "type": "FactSet",
                         "facts": [
-                            { "title": "Tổng số Job:", "value": `${totalJobs}` },
+                            { "title": "Tổng số Job:", "value": `**${totalJobs}**` },
                             { "title": "Khu vực:", "value": "Vancouver, BC" },
                             { "title": "Ngày cập nhật:", "value": new Date().toLocaleDateString('vi-VN') }
                         ]
                     },
                     {
                         "type": "TextBlock",
-                        "text": "Nhấn nút bên dưới để tải file chi tiết (Excel):",
+                        "text": "Nhấn nút bên dưới để tải file Excel chi tiết:",
                         "wrap": true,
                         "isSubtle": true
                     }
@@ -48,8 +50,9 @@ async function sendToTeams(totalJobs, fileLink) {
                 "actions": [
                     {
                         "type": "Action.OpenUrl",
-                        "title": "📥 Tải File Kết Quả",
-                        "url": fileLink || "https://litterbox.catbox.moe"
+                        "title": "📥 TẢI FILE EXCEL",
+                        "url": fileLink || "#",
+                        "style": "positive"
                     }
                 ]
             }
@@ -57,12 +60,12 @@ async function sendToTeams(totalJobs, fileLink) {
     };
 
     try {
-        const res = await axios.post(webhookUrl, cardContent);
-        if (res.status === 200) {
-            console.log("✅ [Teams] Đã gửi báo cáo thành công vào channel!");
-        }
+        const res = await axios.post(webhookUrl, cardPayload, {
+            headers: { "Content-Type": "application/json" }
+        });
+        console.log(`✅ [Teams] Gửi thành công - Status: ${res.status}`);
     } catch (error) {
-        console.error("❌ [Teams] Lỗi gửi tin nhắn:", error.response?.data || error.message);
+        console.error("❌ [Teams] Lỗi:", error.response?.data || error.message);
     }
 }
 
