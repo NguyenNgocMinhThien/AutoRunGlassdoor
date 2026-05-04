@@ -17,42 +17,33 @@ async function sendToTeams(totalJobs, fileLink) {
         "type": "message",
         "attachments": [{
             "contentType": "application/vnd.microsoft.card.adaptive",
-            "contentUrl": null,
             "content": {
                 "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
                 "type": "AdaptiveCard",
                 "version": "1.4",
-                "msteams": { "width": "Full" },
                 "body": [
                     {
                         "type": "TextBlock",
-                        "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
+                        "text": "🚀 **CẬP NHẬT JOB VANCOUVER**",
                         "weight": "Bolder",
                         "size": "Large",
-                        "color": "Accent",
                         "wrap": true
                     },
                     {
-                        "type": "FactSet",
-                        "facts": [
-                            { "title": "Tổng số Job:", "value": `**${totalJobs}**` },
-                            { "title": "Khu vực:", "value": "Vancouver, BC" },
-                            { "title": "Ngày cập nhật:", "value": new Date().toLocaleDateString('vi-VN') }
-                        ]
+                        "type": "TextBlock",
+                        "text": `Tổng số Job: **${totalJobs}**\nKhu vực: Vancouver, BC\nNgày: ${new Date().toLocaleDateString('vi-VN')}`,
+                        "wrap": true
                     },
                     {
-                        "type": "TextBlock",
-                        "text": "Nhấn nút bên dưới để tải file Excel chi tiết:",
-                        "wrap": true,
-                        "isSubtle": true
-                    }
-                ],
-                "actions": [
-                    {
-                        "type": "Action.OpenUrl",
-                        "title": "📥 TẢI FILE EXCEL",
-                        "url": fileLink || "#",
-                        "style": "positive"
+                        "type": "ActionSet",
+                        "actions": [
+                            {
+                                "type": "Action.OpenUrl",
+                                "title": "📥 TẢI FILE EXCEL",
+                                "url": fileLink || "#",
+                                "style": "positive"
+                            }
+                        ]
                     }
                 ]
             }
@@ -63,7 +54,7 @@ async function sendToTeams(totalJobs, fileLink) {
         const res = await axios.post(webhookUrl, cardPayload, {
             headers: { "Content-Type": "application/json" }
         });
-        console.log(`✅ [Teams] Gửi thành công - Status: ${res.status}`);
+        console.log(`✅ [Teams] Status: ${res.status}`);
     } catch (error) {
         console.error("❌ [Teams] Lỗi:", error.response?.data || error.message);
     }
