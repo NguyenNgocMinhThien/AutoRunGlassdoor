@@ -11,25 +11,33 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 // --- HÀM GỬI MS TEAMS (ĐÃ FIX HIỂN THỊ) ---
 async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
-    
-    if (!webhookUrl) {
-        console.error("❌ TEAMS_WEBHOOK_URL chưa được set trong GitHub Secrets");
-        return;
-    }
+    if (!webhookUrl) return;
 
-    console.log("🔗 Webhook URL length:", webhookUrl.length); // Để check có giá trị không
-
-    const testPayload = {
-        "text": `🧪 TEST WEBHOOK - ${new Date().toLocaleString('vi-VN')}\nTổng job: ${totalJobs}\nLink: ${fileLink || 'Không có'}`
+    const adaptiveCard = {
+        "type": "AdaptiveCard",
+        "version": "1.4",
+        "body": [
+            { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
+            {
+                "type": "FactSet",
+                "facts": [
+                    { "title": "Nguồn:", "value": "Indeed Canada" },
+                    { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                    { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
+                ]
+            }
+        ],
+        "actions": [
+            { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }
+        ],
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
     };
 
     try {
-        const res = await axios.post(webhookUrl, testPayload, {
-            headers: { "Content-Type": "application/json" }
-        });
-        console.log(`✅ [Teams Test] Status: ${res.status}`);
+        await axios.post(webhookUrl, adaptiveCard);
+        console.log("✅ [Teams] Đã gửi Card thành công!");
     } catch (error) {
-        console.error("❌ [Teams] Lỗi:", error.response?.data || error.message);
+        console.error("❌ [Teams] Lỗi gửi:", error.message);
     }
 }
 
