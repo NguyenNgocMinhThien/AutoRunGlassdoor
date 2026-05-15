@@ -16,31 +16,31 @@ async function sendToTeams(n, fileLink) {
     try {
         // Cấu trúc bọc ngoài để Workflow MS Teams nhận diện Adaptive Card
         await axios.post(url, {
-            type: "message",
-            attachments: [{
-                contentType: "application/vnd.microsoft.card.adaptive",
-                content: {
-                    type: "AdaptiveCard",
-                    version: "1.4",
-                    body: [
-                        { type: "TextBlock", text: "🚀 CẬP NHẬT JOB MỚI — VANCOUVER CA", weight: "Bolder", size: "Medium", color: "Accent", wrap: true },
-                        { type: "FactSet", facts: [
-                            { title: "Nguồn:", value: "Glassdoor Canada" }, 
-                            { title: "Khu vực:", value: "Vancouver, BC" },
-                            { title: "Số job:", value: `${n}` },     
-                            { title: "Status:", value: "✅ Đã quét thành công" }
-                        ]}
-                    ],
-                    actions: [
-                        { type: "Action.OpenUrl", title: "📥 Tải Excel", url: fileLink || "https://litterbox.catbox.moe" }
-                    ],
-                    $schema: "http://adaptivecards.io/schemas/adaptive-card.json"
+
+
+            type: "AdaptiveCard",
+            version: "1.4",
+            body: [
+                { type: "TextBlock", text: "🚀 CẬP NHẬT JOB MỚI — VANCOUVER CA", weight: "Bolder", size: "Medium", color: "Accent", wrap: true },
+                {
+                    type: "FactSet", facts: [
+                        { title: "Nguồn:", value: "Glassdoor Canada" },
+                        { title: "Khu vực:", value: "Vancouver, BC" },
+                        { title: "Số job:", value: `${n}` },
+                        { title: "Status:", value: "✅ Đã quét thành công" }
+                    ]
                 }
-            }]
+            ],
+            actions: [
+                { type: "Action.OpenUrl", title: "📥 Tải Excel", url: fileLink || "https://litterbox.catbox.moe" }
+            ],
+            $schema: "http://adaptivecards.io/schemas/adaptive-card.json"
+
+
         });
         console.log("✅ [Teams] Đã gửi Card thành công!");
-    } catch (e) { 
-        console.error("❌ [Teams]:", e.response?.data || e.message); 
+    } catch (e) {
+        console.error("❌ [Teams]:", e.response?.data || e.message);
     }
 }
 
@@ -53,12 +53,12 @@ async function uploadToCatbox(filePath) {
         form.append('fileToUpload', fs.createReadStream(filePath));
         const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
             headers: form.getHeaders(),
-            timeout: 25000 
+            timeout: 25000
         });
         return response.data.trim();
-    } catch (error) { 
+    } catch (error) {
         console.log("⚠️ Lỗi Catbox: Không lấy được link tải.");
-        return ""; 
+        return "";
     }
 }
 
@@ -66,8 +66,8 @@ async function sendTelegramFile(filePath) {
     const form = new FormData();
     form.append('chat_id', process.env.TELEGRAM_CHAT_ID);
     form.append('document', fs.createReadStream(filePath));
-    try { 
-        await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendDocument`, form, { headers: form.getHeaders() }); 
+    try {
+        await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendDocument`, form, { headers: form.getHeaders() });
     } catch (e) { console.log("⚠️ Lỗi gửi Telegram"); }
 }
 
@@ -92,9 +92,9 @@ async function runScraper() {
                         url: targetUrl,
                         premium: 'true', // Bắt buộc để tránh lỗi 500
                         render: 'false',  // Tắt render để đạt tốc độ < 2 phút
-                        country_code: 'us' 
+                        country_code: 'us'
                     },
-                    timeout: 30000 
+                    timeout: 30000
                 });
 
                 const $ = cheerio.load(response.data);
@@ -115,7 +115,7 @@ async function runScraper() {
                     console.log(`✅ Lấy được ${count} jobs cho "${kw}"`);
                     success = true;
                 }
-                await delay(2000); 
+                await delay(2000);
             } catch (err) {
                 console.log(`⚠️ Lỗi ${kw}: ${err.message}`);
                 if (attempts < 3) await delay(5000 * attempts);
