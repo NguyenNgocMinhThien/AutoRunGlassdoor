@@ -7,68 +7,40 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
-
-// Hàm tạo độ trễ (nghỉ) giữa các lần quét
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- HÀM GỬI MS TEAMS ---
-async function sendToTeams(totalJobs, fileLink) {
-    const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
-    if (!webhookUrl) return;
-
-    // Cấu trúc bắt buộc để MS Teams nhận diện Adaptive Card qua Webhook
-    const messagePayload = {
-        "type": "message",
-        "attachments": [
-            {
-                "contentType": "application/vnd.microsoft.card.adaptive",
-                "content": {
-                    "type": "AdaptiveCard",
-                    "version": "1.4",
-                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                    "body": [
-                        {
-                            "type": "TextBlock",
-                            "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
-                            "weight": "Bolder",
-                            "size": "Medium",
-                            "color": "Accent",
-                            "wrap": true
-                        },
-                        {
-                            "type": "FactSet",
-                            "facts": [
-                                { "title": "Nguồn:", "value": "Glassdoor Canada" },
-                                { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                                { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
-                            ]
-                        },
-                        {
-                            "type": "TextBlock",
-                            "text": "Nhấn nút bên dưới để tải file Excel chi tiết",
-                            "wrap": true,
-                            "isSubtle": true,
-                            "spacing": "Medium"
-                        }
-                    ],
-                    "actions": [
-                        {
-                            "type": "Action.OpenUrl",
-                            "title": "📥 TẢI FILE EXCEL VỀ MÁY",
-                            "url": fileLink || "https://litterbox.catbox.moe" 
-                        }
-                    ]
-                }
-            }
-        ]
-    };
-
+// --- HÀM GỬI MS TEAMS (THEO MẪU CỦA BẠN) ---
+async function sendToTeams(n, fileLink) {
+    const url = process.env.TEAMS_WEBHOOK_URL;
+    if (!url) return;
     try {
-        await axios.post(webhookUrl, messagePayload);
+        // Cấu trúc bọc ngoài để Workflow MS Teams nhận diện Adaptive Card
+        await axios.post(url, {
+            type: "message",
+            attachments: [{
+                contentType: "application/vnd.microsoft.card.adaptive",
+                content: {
+                    type: "AdaptiveCard",
+                    version: "1.4",
+                    body: [
+                        { type: "TextBlock", text: "🚀 CẬP NHẬT JOB MỚI — VANCOUVER CA", weight: "Bolder", size: "Medium", color: "Accent", wrap: true },
+                        { type: "FactSet", facts: [
+                            { title: "Nguồn:", value: "Glassdoor Canada" }, 
+                            { title: "Khu vực:", value: "Vancouver, BC" },
+                            { title: "Số job:", value: `${n}` },     
+                            { title: "Status:", value: "✅ Đã quét thành công" }
+                        ]}
+                    ],
+                    actions: [
+                        { type: "Action.OpenUrl", title: "📥 Tải Excel", url: fileLink || "https://litterbox.catbox.moe" }
+                    ],
+                    $schema: "http://adaptivecards.io/schemas/adaptive-card.json"
+                }
+            }]
+        });
         console.log("✅ [Teams] Đã gửi Card thành công!");
-    } catch (error) {
-        // Kiểm tra lỗi chi tiết từ MS Teams trả về
-        console.error("❌ [Teams] Lỗi gửi:", error.response?.data || error.message);
+    } catch (e) { 
+        console.error("❌ [Teams]:", e.response?.data || e.message); 
     }
 }
 
@@ -81,23 +53,13 @@ async function uploadToCatbox(filePath) {
         form.append('fileToUpload', fs.createReadStream(filePath));
         const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
             headers: form.getHeaders(),
-            timeout: 30000 
+            timeout: 25000 
         });
         return response.data.trim();
     } catch (error) { 
-        console.log("⚠️ Lỗi Catbox (Timeout), sử dụng file đính kèm Telegram thay thế.");
+        console.log("⚠️ Lỗi Catbox: Không lấy được link tải.");
         return ""; 
     }
-}
-
-async function sendTelegramAlert(message) {
-    try { 
-        await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`, { 
-            chat_id: process.env.TELEGRAM_CHAT_ID, 
-            text: message, 
-            parse_mode: 'HTML' 
-        }); 
-    } catch (e) { console.log("⚠️ Lỗi gửi tin nhắn Telegram"); }
 }
 
 async function sendTelegramFile(filePath) {
@@ -105,28 +67,22 @@ async function sendTelegramFile(filePath) {
     form.append('chat_id', process.env.TELEGRAM_CHAT_ID);
     form.append('document', fs.createReadStream(filePath));
     try { 
-        await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendDocument`, form, { 
-            headers: form.getHeaders(),
-            timeout: 60000
-        }); 
-    } catch (e) { console.log("⚠️ Lỗi gửi file Telegram"); }
+        await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendDocument`, form, { headers: form.getHeaders() }); 
+    } catch (e) { console.log("⚠️ Lỗi gửi Telegram"); }
 }
 
 // --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
-    const startTime = Date.now();
     console.log("🚀 Khởi động Scraper (Mục tiêu < 2 phút)...");
     let allJobs = [];
     const currentDate = new Date().toISOString().split('T')[0];
 
     for (const kw of KEYWORDS) {
         const targetUrl = `https://www.glassdoor.ca/Job/vancouver-bc-jobs-SRCH_IL.0,12_IC2278757.htm?sc.keyword=${encodeURIComponent(kw)}&fromAge=3`;
-        
         let attempts = 0;
         let success = false;
-        const maxAttempts = 3;
 
-        while (attempts < maxAttempts && !success) {
+        while (attempts < 3 && !success) {
             attempts++;
             try {
                 console.log(`🔍 Quét: ${kw} (Lần ${attempts})...`);
@@ -134,54 +90,35 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        premium: 'true',
-                        render: 'false', // Tắt render để tăng tốc độ phản hồi cực nhanh
+                        premium: 'true', // Bắt buộc để tránh lỗi 500
+                        render: 'false',  // Tắt render để đạt tốc độ < 2 phút
                         country_code: 'us' 
                     },
-                    timeout: 30000 // Giảm timeout xuống 30s để xử lý lỗi nhanh hơn
+                    timeout: 30000 
                 });
 
                 const $ = cheerio.load(response.data);
                 let count = 0;
-
                 $('li[data-test="jobListing"]').each((i, el) => {
                     const title = $(el).find('a[id^="job-title"]').text().trim();
-                    // Selector linh hoạt lấy tên công ty, loại bỏ sao đánh giá
-                    const companyRaw = $(el).find('[class*="EmployerProfile"]').text() || $(el).find('[class*="employerName"]').text();
-                    const company = companyRaw.split(/[\d.]+\s*★/)[0].trim();
-                    
+                    const company = $(el).find('[class*="EmployerProfile"]').text().split(/[\d.]+\s*★/)[0].trim();
                     let link = $(el).find('a[id^="job-title"]').attr('href') || "";
                     if (link && !link.startsWith('http')) link = "https://www.glassdoor.ca" + link;
 
                     if (title) {
-                        allJobs.push({
-                            Title: title,
-                            Company: company || "N/A",
-                            Salary: $(el).find('[data-test="detailSalary"]').text().trim() || "N/A",
-                            Location: "Vancouver, BC",
-                            Link: link,
-                            Keyword: kw,
-                            Date: currentDate
-                        });
+                        allJobs.push({ Title: title, Company: company || "N/A", Salary: $(el).find('[data-test="detailSalary"]').text().trim() || "N/A", Location: "Vancouver, BC", Link: link, Keyword: kw, Date: currentDate });
                         count++;
                     }
                 });
 
                 if (count > 0) {
-                    console.log(`✅ ${kw}: Lấy được ${count} jobs.`);
+                    console.log(`✅ Lấy được ${count} jobs cho "${kw}"`);
                     success = true;
-                } else {
-                    console.log(`⚠️ ${kw}: Trang trống (Lần ${attempts}). Thử lại...`);
                 }
-                
-                // Nghỉ ngắn giữa các từ khóa
-                await delay(2000);
-
+                await delay(2000); 
             } catch (err) {
-                console.log(`⚠️ Lỗi ${kw} (Lần ${attempts}): ${err.response?.status || err.message}`);
-                if (attempts < maxAttempts) {
-                    await delay(5000 * attempts); // Đợi tăng dần trước khi retry
-                }
+                console.log(`⚠️ Lỗi ${kw}: ${err.message}`);
+                if (attempts < 3) await delay(5000 * attempts);
             }
         }
     }
@@ -193,18 +130,11 @@ async function runScraper() {
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
-        console.log("📤 Đang gửi báo cáo...");
         const fileLink = await uploadToCatbox(fileName);
-        
-        await sendTelegramAlert(`✅ <b>[Glassdoor]</b> Quét thành công <b>${allJobs.length}</b> jobs!`);
+        console.log("📤 Đang gửi dữ liệu...");
         await sendTelegramFile(fileName);
         await sendToTeams(allJobs.length, fileLink);
-        
-        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-        console.log(`🏁 Hoàn tất trong ${duration} giây!`);
-    } else {
-        console.log("❌ Không lấy được dữ liệu sau khi đã thử lại.");
-        await sendTelegramAlert("❌ Glassdoor: Không tìm thấy job nào hôm nay.");
+        console.log("🏁 Hoàn tất!");
     }
 }
 
