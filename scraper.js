@@ -16,34 +16,59 @@ async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
 
-    const adaptiveCard = {
+    // Cấu trúc bắt buộc để MS Teams nhận diện Adaptive Card qua Webhook
+    const messagePayload = {
         "type": "message",
-        "attachments": [{
-            "contentType": "application/vnd.microsoft.card.adaptive",
-            "content": {
-                "type": "AdaptiveCard",
-                "version": "1.4",
-                "body": [
-                    { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB GLASS DOOR VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
-                    {
-                        "type": "FactSet",
-                        "facts": [
-                            { "title": "Nguồn:", "value": "Glassdoor Canada" },
-                            { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                            { "title": "Trạng thái:", "value": "Đã hoàn tất ✅" }
-                        ]
-                    }
-                ],
-                "actions": [{ "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL", "url": fileLink || "#" }]
+        "attachments": [
+            {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                    "type": "AdaptiveCard",
+                    "version": "1.4",
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "body": [
+                        {
+                            "type": "TextBlock",
+                            "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
+                            "weight": "Bolder",
+                            "size": "Medium",
+                            "color": "Accent",
+                            "wrap": true
+                        },
+                        {
+                            "type": "FactSet",
+                            "facts": [
+                                { "title": "Nguồn:", "value": "Glassdoor Canada" },
+                                { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                                { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
+                            ]
+                        },
+                        {
+                            "type": "TextBlock",
+                            "text": "Nhấn nút bên dưới để tải file Excel chi tiết",
+                            "wrap": true,
+                            "isSubtle": true,
+                            "spacing": "Medium"
+                        }
+                    ],
+                    "actions": [
+                        {
+                            "type": "Action.OpenUrl",
+                            "title": "📥 TẢI FILE EXCEL VỀ MÁY",
+                            "url": fileLink || "https://litterbox.catbox.moe" 
+                        }
+                    ]
+                }
             }
-        }]
+        ]
     };
 
     try {
-        await axios.post(webhookUrl, adaptiveCard);
-        console.log("✅ [Teams] Đã gửi thông báo thành công!");
+        await axios.post(webhookUrl, messagePayload);
+        console.log("✅ [Teams] Đã gửi Card thành công!");
     } catch (error) {
-        console.error("❌ [Teams] Lỗi gửi:", error.message);
+        // Kiểm tra lỗi chi tiết từ MS Teams trả về
+        console.error("❌ [Teams] Lỗi gửi:", error.response?.data || error.message);
     }
 }
 
