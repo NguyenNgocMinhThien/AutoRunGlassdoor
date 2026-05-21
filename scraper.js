@@ -9,27 +9,37 @@ const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- HÀM GỬI MS TEAMS ---
+// --- HÀM GỬI MS TEAMS GỐC (ĐÃ SỬA LỖI URL ĐỂ HIỂN THỊ CARD) ---
 async function sendToTeams(n, fileLink) {
     const url = process.env.TEAMS_WEBHOOK_URL;
     if (!url) return;
+
+    // Ép URL hợp lệ: Nếu Catbox lỗi (link trống), lấy tạm link gốc để không bị trống Card trên Teams
+    const validUrl = (fileLink && fileLink.startsWith('http')) ? fileLink : "https://www.glassdoor.ca";
+
     try {
+        // Giữ nguyên cấu trúc KHÔNG bọc ngoài theo đúng yêu cầu của bạn
         await axios.post(url, {
             type: "AdaptiveCard",
             version: "1.4",
             body: [
                 { type: "TextBlock", text: "🚀 CẬP NHẬT JOB MỚI — VANCOUVER CA", weight: "Bolder", size: "Medium", color: "Accent", wrap: true },
                 {
-                    type: "FactSet", facts: [
+                    type: "FactSet", 
+                    facts: [
                         { title: "Nguồn:", value: "Glassdoor Canada" },
                         { title: "Khu vực:", value: "Vancouver, BC" },
                         { title: "Số job:", value: `${n}` },
-                        { title: "Status:", value: "✅ Đã quét thành công" }
+                        { title: "Status:", value: fileLink ? "✅ Đã quét thành công" : "⚠️ Lỗi Catbox - Dùng link gốc" }
                     ]
                 }
             ],
             actions: [
-                { type: "Action.OpenUrl", title: "📥 Tải Excel", url: fileLink || "https://litterbox.catbox.moe" }
+                { 
+                    type: "Action.OpenUrl", 
+                    title: fileLink ? "📥 Tải Excel" : "🌐 Mở Glassdoor.ca", 
+                    url: validUrl 
+                }
             ],
             $schema: "http://adaptivecards.io/schemas/adaptive-card.json"
         });
@@ -39,22 +49,31 @@ async function sendToTeams(n, fileLink) {
     }
 }
 
-// --- CÁC HÀM PHỤ TRỢ ---
-async function uploadToCatbox(filePath) {
-    try {
-        const form = new FormData();
-        form.append('reqtype', 'fileupload');
-        form.append('time', '24h');
-        form.append('fileToUpload', fs.createReadStream(filePath));
-        const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
-            headers: form.getHeaders(),
-            timeout: 25000
-        });
-        return response.data.trim();
-    } catch (error) {
-        console.log("⚠️ Lỗi Catbox: Không lấy được link tải.");
-        return "";
+// --- HÀM UPLOAD CATBOX CÓ RETRY TỰ ĐỘNG CHỐNG TIMEOUT ---
+async function uploadToCatbox(filePath, retries = 3) {
+    for (let i = 1; i <= retries; i++) {
+        try {
+            const form = new FormData();
+            form.append('reqtype', 'fileupload');
+            form.append('time', '24h');
+            form.append('fileToUpload', fs.createReadStream(filePath));
+            
+            const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
+                headers: form.getHeaders(),
+                timeout: 35000 // Chờ tối đa 35 giây
+            });
+            
+            const link = response.data.trim();
+            if (link && link.startsWith('http')) {
+                return link;
+            }
+        } catch (error) {
+            console.log(`⚠️ Lỗi Catbox lần ${i}: Đang thử lại sau 3 giây...`);
+            if (i < retries) await delay(3000);
+        }
     }
+    console.log("❌ Thất bại: Không lấy được link từ Catbox sau 3 lần thử.");
+    return "";
 }
 
 async function sendTelegramFile(filePath) {
@@ -73,7 +92,6 @@ async function runScraper() {
     const currentDate = new Date().toISOString().split('T')[0];
 
     for (const kw of KEYWORDS) {
-        // Thêm tham số &lr=en để ép hệ thống tải giao diện tiếng Anh
         const targetUrl = `https://www.glassdoor.ca/Job/vancouver-bc-jobs-SRCH_IL.0,12_IC2278757.htm?sc.keyword=${encodeURIComponent(kw)}&fromAge=3&lr=en`;
         let attempts = 0;
         let success = false;
@@ -102,11 +120,10 @@ async function runScraper() {
 
                     let link = $(el).find('a[id^="job-title"]').attr('href') || "";
                     if (link) {
-                        // Thêm domain nếu là link tương đối
                         if (!link.startsWith('http')) {
                             link = "https://www.glassdoor.ca" + link;
                         }
-                        // Loại bỏ triệt để tiền tố fr. nếu có phát sinh từ proxy
+                        // Chuẩn hóa link loại bỏ fr. thành www.
                         link = link.replace('://fr.glassdoor.ca', '://www.glassdoor.ca');
                     }
 
@@ -143,7 +160,9 @@ async function runScraper() {
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
+        // Chạy hàm upload Catbox có cơ chế retry tự động chống timeout
         const fileLink = await uploadToCatbox(fileName);
+        
         console.log("📤 Đang gửi dữ liệu...");
         await sendTelegramFile(fileName);
         await sendToTeams(allJobs.length, fileLink);
